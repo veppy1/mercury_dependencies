@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Enhanced macOS Development Environment Installer
+# Streamlined macOS Development Environment Installer
 # This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium without using Homebrew
 
 set -e
@@ -147,81 +147,22 @@ install_appium() {
         
         print_color "YELLOW" "Installing Appium..."
         npm install -g appium
-        npm install -g appium-doctor
         
         APPIUM_PATH=$(which appium)
         add_to_path "$(dirname "$APPIUM_PATH")"
         
         print_color "GREEN" "Appium installed successfully"
-        print_color "YELLOW" "Running appium-doctor to check the setup..."
-        appium-doctor
     fi
-}
-
-# Install additional tools
-install_additional_tools() {
-    if prompt_install "Additional tools (wget, tree)"; then
-        print_color "YELLOW" "Installing wget..."
-        curl -O https://ftp.gnu.org/gnu/wget/wget-1.21.1.tar.gz
-        tar -xzf wget-1.21.1.tar.gz
-        cd wget-1.21.1
-        ./configure --with-ssl=openssl
-        make
-        sudo make install
-        cd ..
-        rm -rf wget-1.21.1 wget-1.21.1.tar.gz
-        
-        print_color "YELLOW" "Installing tree..."
-        curl -O https://mama.indstate.edu/users/ice/tree/src/tree-1.8.0.tgz
-        tar -xzf tree-1.8.0.tgz
-        cd tree-1.8.0
-        make
-        sudo make install
-        cd ..
-        rm -rf tree-1.8.0 tree-1.8.0.tgz
-        
-        print_color "GREEN" "Additional tools installed successfully"
-    fi
-}
-
-# Check system requirements
-check_system_requirements() {
-    print_color "BLUE" "Checking system requirements..."
-    
-    # Check macOS version
-    OS_VERSION=$(sw_vers -productVersion)
-    if [[ "${OS_VERSION}" < "10.15" ]]; then
-        print_color "RED" "This script requires macOS Catalina (10.15) or later. Your version: ${OS_VERSION}"
-        exit 1
-    fi
-    
-    # Check available disk space
-    AVAILABLE_SPACE=$(df -h / | awk 'NR==2 {print $4}' | sed 's/Gi//')
-    if (( $(echo "${AVAILABLE_SPACE} < 10" | bc -l) )); then
-        print_color "RED" "You need at least 10GB of free disk space. Available: ${AVAILABLE_SPACE}GB"
-        exit 1
-    fi
-    
-    # Check if Xcode Command Line Tools are installed
-    if ! xcode-select -p &> /dev/null; then
-        print_color "YELLOW" "Xcode Command Line Tools not found. Installing..."
-        xcode-select --install
-        read -p "Press enter after Xcode Command Line Tools installation is complete"
-    fi
-    
-    print_color "GREEN" "System requirements met"
 }
 
 # Main installation process
 main() {
-    print_color "GREEN" "Starting Enhanced macOS Development Environment Installation"
+    print_color "GREEN" "Starting Streamlined macOS Development Environment Installation"
     
-    check_system_requirements
     install_jdk
     install_nodejs
     install_android_sdk
     install_appium
-    install_additional_tools
     
     print_color "GREEN" "Installation complete. Please restart your terminal or run 'source ~/.zshrc' to apply changes."
     print_color "YELLOW" "Installation paths:"
@@ -236,8 +177,6 @@ main() {
     echo "npm -v"
     echo "adb version"
     echo "appium -v"
-    echo "wget --version"
-    echo "tree --version"
 }
 
 main
