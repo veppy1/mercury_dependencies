@@ -1,0 +1,188 @@
+#!/bin/bash
+
+# V3 macOS Development Environment Installer
+# This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium without using Homebrew
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_color() {
+    printf "${!1}%s${NC}\n" "$2"
+}
+
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to prompt user for installation
+prompt_install() {
+    if [ -t 0 ]; then
+        while true; do
+            read -p "Do you want to install $1? (y/n): " yn
+            case $yn in
+                [Yy]* ) return 0;;
+                [Nn]* ) return 1;;
+                * ) echo "Please answer yes or no.";;
+            esac
+        done
+    else
+        # If not running interactively, assume yes
+        return 0
+    fi
+}
+
+# Function to download file if not exists
+download_file() {
+    if [ ! -f "$2" ]; then
+        print_color "YELLOW" "Downloading $1..."
+        curl -L "$1" -o "$2"
+    else
+        print_color "GREEN" "$2 already exists. Skipping download."
+    fi
+}
+
+# Function to add to PATH
+add_to_path() {
+    if ! grep -q "$1" ~/.zshrc; then
+        echo "export PATH=\"$1:\$PATH\"" >> ~/.zshrc
+        print_color "GREEN" "Added $1 to PATH in ~/.zshrc"
+    else
+        print_color "YELLOW" "$1 is already in PATH"
+    fi
+}
+
+# Function to set environment variable
+set_env_var() {
+    if ! grep -q "export $1=" ~/.zshrc; then
+        echo "export $1=$2" >> ~/.zshrc
+        print_color "GREEN" "Added $1 environment variable to ~/.zshrc"
+    else
+        print_color "YELLOW" "$1 environment variable is already set"
+    fi
+}
+
+# Install JDK
+install_jdk() {
+    if prompt_install "JDK 11"; then
+        JDK_VERSION="11.0.2"
+        JDK_URL="https://download.java.net/java/GA/jdk11/${JDK_VERSION}/9/GPL/openjdk-${JDK_VERSION}_osx-x64_bin.tar.gz"
+        JDK_TAR="openjdk-${JDK_VERSION}_osx-x64_bin.tar.gz"
+        
+        download_file "$JDK_URL" "$JDK_TAR"
+        
+        print_color "YELLOW" "Extracting JDK..."
+        tar -xzf "$JDK_TAR"
+        sudo mv jdk-${JDK_VERSION}.jdk /Library/Java/JavaVirtualMachines/
+        rm "$JDK_TAR"
+        
+        JAVA_HOME="/Library/Java/JavaVirtualMachines/jdk-${JDK_VERSION}.jdk/Contents/Home"
+        add_to_path "$JAVA_HOME/bin"
+        set_env_var "JAVA_HOME" "$JAVA_HOME"
+        
+        print_color "GREEN" "JDK 11 installed successfully"
+    fi
+}
+
+# Install Node.js
+install_nodejs() {
+    if prompt_install "Node.js"; then
+        NODE_VERSION="14.17.0"
+        NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-x64.tar.gz"
+        NODE_TAR="node-v${NODE_VERSION}-darwin-x64.tar.gz"
+        
+        download_file "$NODE_URL" "$NODE_TAR"
+        
+        print_color "YELLOW" "Extracting Node.js..."
+        tar -xzf "$NODE_TAR"
+        sudo mv node-v${NODE_VERSION}-darwin-x64 /usr/local/lib/nodejs
+        rm "$NODE_TAR"
+        
+        NODE_PATH="/usr/local/lib/nodejs/bin"
+        add_to_path "$NODE_PATH"
+        set_env_var "NODE_HOME" "/usr/local/lib/nodejs"
+        
+        print_color "GREEN" "Node.js installed successfully"
+    fi
+}
+
+# Install Android SDK Command-line Tools
+install_android_sdk() {
+    if prompt_install "Android SDK Command-line Tools"; then
+        SDK_VERSION="8512546"
+        SDK_URL="https://dl.google.com/android/repository/commandlinetools-mac-${SDK_VERSION}_latest.zip"
+        SDK_ZIP="commandlinetools-mac-${SDK_VERSION}_latest.zip"
+        
+        download_file "$SDK_URL" "$SDK_ZIP"
+        
+        print_color "YELLOW" "Extracting Android SDK Command-line Tools..."
+        unzip -q "$SDK_ZIP" -d ~/Library/Android/sdk
+        rm "$SDK_ZIP"
+        
+        ANDROID_HOME="$HOME/Library/Android/sdk"
+        ANDROID_SDK_ROOT="$ANDROID_HOME"
+        
+        set_env_var "ANDROID_HOME" "$ANDROID_HOME"
+        set_env_var "ANDROID_SDK_ROOT" "$ANDROID_SDK_ROOT"
+        add_to_path "$ANDROID_HOME/cmdline-tools/latest/bin"
+        add_to_path "$ANDROID_HOME/platform-tools"
+        
+        print_color "YELLOW" "Installing Android SDK packages..."
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+        
+        print_color "GREEN" "Android SDK Command-line Tools installed successfully"
+    fi
+}
+
+# Install Appium
+install_appium() {
+    if prompt_install "Appium"; then
+        if ! command_exists npm; then
+            print_color "RED" "npm is not installed. Please install Node.js first."
+            return 1
+        fi
+        
+        print_color "YELLOW" "Installing Appium..."
+        npm install -g appium
+        
+        APPIUM_PATH=$(which appium)
+        add_to_path "$(dirname "$APPIUM_PATH")"
+        
+        print_color "GREEN" "Appium installed successfully"
+    fi
+}
+
+# Main installation process
+main() {
+    print_color "GREEN" "Starting V3 macOS Development Environment Installation"
+    
+    install_jdk
+    install_nodejs
+    install_android_sdk
+    install_appium
+    
+    print_color "GREEN" "Installation complete. Please restart your terminal or run 'source ~/.zshrc' to apply changes."
+    print_color "YELLOW" "Installation paths:"
+    echo "JDK: $JAVA_HOME"
+    echo "Node.js: $NODE_HOME"
+    echo "Android SDK: $ANDROID_HOME"
+    echo "Appium: $APPIUM_PATH"
+    
+    print_color "BLUE" "To verify the installation, you can run the following commands:"
+    echo "java -version"
+    echo "node -v"
+    echo "npm -v"
+    echo "adb version"
+    echo "appium -v"
+}
+
+# Check if the script is being run directly or sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main
+fi
