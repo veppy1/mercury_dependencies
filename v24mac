@@ -1,0 +1,188 @@
+#!/bin/bash
+
+# V24 macOS Development Environment Installer
+# This script installs JDK, Node.js, Android Platform Tools, and Appium
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+NC='\033[0m'
+
+print_color() { printf "${!1}%s${NC}\n" "$2"; }
+
+find_java_home() {
+    if [ -x "/usr/libexec/java_home" ]; then
+        echo $(/usr/libexec/java_home)
+    elif [ -n "$JAVA_HOME" ]; then
+        echo "$JAVA_HOME"
+    elif [ -x "$(command -v java)" ]; then
+        echo $(dirname $(dirname $(readlink -f $(which java))))
+    else
+        echo ""
+    fi
+}
+
+set_env_var() {
+    local var_name=$1
+    local var_value=$2
+    if ! grep -q "export $var_name=" ~/.zshrc; then
+        echo "export $var_name=$var_value" >> ~/.zshrc
+        print_color "GREEN" "Added $var_name environment variable to ~/.zshrc"
+    else
+        sed -i '' "s|export $var_name=.*|export $var_name=$var_value|" ~/.zshrc
+        print_color "YELLOW" "Updated $var_name environment variable in ~/.zshrc"
+    fi
+
+    if [ -n "$var_value" ] && [[ ":$PATH:" != *":$var_value/bin:"* ]]; then
+        echo "export PATH=$var_value/bin:\$PATH" >> ~/.zshrc
+        print_color "GREEN" "Added $var_value/bin to PATH in ~/.zshrc"
+    fi
+}
+
+refresh_zshrc() {
+    print_color "BLUE" "Refreshing .zshrc..."
+    if [ -f ~/.zshrc ]; then
+        source ~/.zshrc || print_color "YELLOW" "Warning: Could not source ~/.zshrc"
+    else
+        print_color "YELLOW" "Warning: ~/.zshrc not found"
+    fi
+}
+
+install_homebrew() {
+    if ! command -v brew &> /dev/null; then
+        print_color "YELLOW" "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        print_color "GREEN" "Homebrew installed successfully."
+    else
+        print_color "YELLOW" "Homebrew is already installed."
+    fi
+}
+
+install_jdk() {
+    JAVA_HOME=$(find_java_home)
+    if [ -n "$JAVA_HOME" ]; then
+        print_color "YELLOW" "Found Java at $JAVA_HOME"
+    else
+        print_color "YELLOW" "Java not found. Installing OpenJDK 11..."
+        brew install openjdk@11
+        JAVA_HOME=$(brew --prefix openjdk@11)
+    fi
+    set_env_var "JAVA_HOME" "$JAVA_HOME"
+    print_color "GREEN" "JAVA_HOME set to $JAVA_HOME"
+}
+
+install_nodejs() {
+    if command -v node &> /dev/null; then
+        NODE_HOME=$(dirname $(dirname $(readlink -f $(which node))))
+        print_color "YELLOW" "Found Node.js at $NODE_HOME"
+    else
+        print_color "YELLOW" "Node.js not found. Installing..."
+        brew install node@14
+        NODE_HOME=$(brew --prefix node@14)
+    fi
+    set_env_var "NODE_HOME" "$NODE_HOME"
+    print_color "GREEN" "NODE_HOME set to $NODE_HOME"
+    node --version
+}
+
+install_android_platform_tools() {
+    ANDROID_HOME=$HOME/Library/Android/sdk
+    
+    if [ ! -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "YELLOW" "Installing Android Platform Tools..."
+        mkdir -p $ANDROID_HOME
+        PLATFORM_TOOLS_URL="https://dl.google.com/android/repository/platform-tools-latest-darwin.zip"
+        PLATFORM_TOOLS_ZIP="platform-tools.zip"
+        curl -o $PLATFORM_TOOLS_ZIP $PLATFORM_TOOLS_URL
+        unzip -q $PLATFORM_TOOLS_ZIP -d $ANDROID_HOME
+        rm $PLATFORM_TOOLS_ZIP
+        print_color "GREEN" "Android Platform Tools installed successfully."
+    else
+        print_color "YELLOW" "Android Platform Tools are already installed."
+    fi
+
+    set_env_var "ANDROID_HOME" "$ANDROID_HOME"
+    echo "export PATH=\$ANDROID_HOME/platform-tools:\$PATH" >> ~/.zshrc
+
+    if [ -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "GREEN" "ADB installed successfully."
+        $ANDROID_HOME/platform-tools/adb version
+    else
+        print_color "RED" "ADB installation failed. Please check manually."
+    fi
+}
+
+install_appium() {
+    if command -v appium &> /dev/null; then
+        print_color "YELLOW" "Appium is already installed."
+    else
+        print_color "YELLOW" "Installing Appium..."
+        npm install -g appium
+    fi
+    appium --version
+}
+
+install_dependencies() {
+    install_homebrew
+    install_jdk
+    install_nodejs
+    install_android_platform_tools
+    install_appium
+}
+
+display_dependency_status() {
+    print_color "BLUE" "Dependency Status:"
+    
+    print_color "YELLOW" "JDK:"
+    print_color "CYAN" "$JAVA_HOME"
+    java -version 2>&1 | head -n 1
+    
+    print_color "YELLOW" "Node.js:"
+    print_color "CYAN" "$NODE_HOME"
+    node --version
+    
+    print_color "YELLOW" "Android Platform Tools:"
+    print_color "CYAN" "$ANDROID_HOME"
+    
+    print_color "YELLOW" "ADB:"
+    if [ -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "CYAN" "$ANDROID_HOME/platform-tools/adb"
+        $ANDROID_HOME/platform-tools/adb version | head -n 1
+    else
+        print_color "RED" "ADB not found. Please check the installation."
+    fi
+    
+    print_color "YELLOW" "Appium:"
+    print_color "CYAN" "$(which appium)"
+    appium --version
+}
+
+get_mercury_parsable_paths() {
+    local java_path="$JAVA_HOME"
+    local android_sdk_path="$ANDROID_HOME"
+    local nodejs_path="$NODE_HOME"
+    local appium_path=$(which appium)
+
+    echo "JAVA_HOME=$java_path|ANDROID_HOME=$android_sdk_path|NODE_HOME=$nodejs_path|APPIUM_PATH=$appium_path"
+}
+
+main() {
+    print_color "GREEN" "Starting V24 macOS Development Environment Installation"
+    install_dependencies
+    refresh_zshrc
+    display_dependency_status
+    
+    print_color "GREEN" "Installation complete. Your environment is now set up."
+    print_color "MAGENTA" "Please restart your terminal or run 'source ~/.zshrc' to apply all changes."
+    
+    print_color "YELLOW" "Mercury-parsable paths:"
+    get_mercury_parsable_paths
+    print_color "YELLOW" "Copy the above line into Mercury to save these paths in your settings."
+}
+
+main
