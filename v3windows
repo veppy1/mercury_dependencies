@@ -1,0 +1,129 @@
+# Windows Development Environment Installer v3 (Chocolatey)
+# This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium using Chocolatey
+
+# Function to print colored output
+function Write-Color([string]$Color = "White", [string]$Message) {
+    Write-Host $Message -ForegroundColor $Color
+}
+
+# Function to check if a command exists
+function Test-Command($Command) {
+    try {
+        if (Get-Command $Command -ErrorAction Stop) {
+            return $true
+        }
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to install Chocolatey
+function Install-Chocolatey {
+    if (!(Test-Command "choco")) {
+        Write-Color "Yellow" "Installing Chocolatey..."
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+        refreshenv
+    } else {
+        Write-Color "Green" "Chocolatey is already installed."
+    }
+}
+
+# Function to install a Chocolatey package
+function Install-ChocoPackage($PackageName, $Version = "") {
+    if ($Version -eq "") {
+        & choco install $PackageName -y
+    } else {
+        & choco install $PackageName --version=$Version -y
+    }
+    refreshenv
+}
+
+# Install JDK
+function Install-JDK {
+    if (Test-Command "java") {
+        $version = & java -version 2>&1
+        Write-Color "Yellow" "Java is already installed: $version"
+    } else {
+        Write-Color "Yellow" "Installing JDK 11..."
+        Install-ChocoPackage "openjdk11"
+        Write-Color "Green" "JDK 11 installed successfully"
+    }
+    & java -version
+}
+
+# Install Node.js
+function Install-NodeJS {
+    if (Test-Command "node") {
+        $version = & node --version
+        Write-Color "Yellow" "Node.js is already installed: $version"
+    } else {
+        Write-Color "Yellow" "Installing Node.js..."
+        Install-ChocoPackage "nodejs-lts"
+        Write-Color "Green" "Node.js installed successfully"
+    }
+    & node --version
+}
+
+# Install Android SDK Command-line Tools
+function Install-AndroidSDK {
+    if (Test-Path "$env:LOCALAPPDATA\Android\Sdk") {
+        Write-Color "Yellow" "Android SDK is already installed."
+    } else {
+        Write-Color "Yellow" "Installing Android SDK Command-line Tools..."
+        Install-ChocoPackage "android-sdk"
+        
+        # Install specific Android SDK packages
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        & sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+        Write-Color "Green" "Android SDK Command-line Tools installed successfully"
+    }
+}
+
+# Install Appium
+function Install-Appium {
+    if (Test-Command "appium") {
+        $version = & appium --version
+        Write-Color "Yellow" "Appium is already installed: $version"
+    } else {
+        if (!(Test-Command "npm")) {
+            Write-Color "Red" "npm is not installed. Please install Node.js first."
+            return
+        }
+        Write-Color "Yellow" "Installing Appium..."
+        & npm install -g appium
+        refreshenv
+        Write-Color "Green" "Appium installed successfully"
+    }
+    & appium --version
+}
+
+# Main installation process
+function Main {
+    Write-Color "Green" "Starting Windows Development Environment Installation using Chocolatey"
+
+    Install-Chocolatey
+    Install-JDK
+    Install-NodeJS
+    Install-AndroidSDK
+    Install-Appium
+
+    Write-Color "Green" "Installation complete. Please restart your terminal to ensure all changes are applied."
+    Write-Color "Yellow" "Installation paths (these should be automatically set by Chocolatey):"
+    Write-Host "JDK: $env:JAVA_HOME"
+    Write-Host "Node.js: $(where.exe node)"
+    Write-Host "Android SDK: $env:ANDROID_HOME"
+    Write-Host "Appium: $(where.exe appium)"
+
+    Write-Color "Blue" "To verify the installation, you can run the following commands:"
+    Write-Host "java -version"
+    Write-Host "node -v"
+    Write-Host "npm -v"
+    Write-Host "adb version"
+    Write-Host "appium -v"
+}
+
+# Run the main function
+Main
