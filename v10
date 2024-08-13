@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# V10 macOS Development Environment Installer
+# This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium using Homebrew
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_color() { printf "${!1}%s${NC}\n" "$2"; }
+
+check_and_install() {
+    local name=$1
+    local check_cmd=$2
+    local install_cmd=$3
+    local version_cmd=$4
+
+    if ! command -v $check_cmd &> /dev/null; then
+        print_color "YELLOW" "Installing $name..."
+        eval $install_cmd
+        print_color "GREEN" "$name installed successfully."
+    else
+        print_color "YELLOW" "$name is already installed."
+    fi
+
+    local version=$($version_cmd 2>&1 | head -n 1)
+    print_color "GREEN" "$name version: $version"
+}
+
+install_homebrew() {
+    if ! command -v brew &> /dev/null; then
+        print_color "YELLOW" "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        print_color "GREEN" "Homebrew installed successfully."
+    else
+        print_color "YELLOW" "Homebrew is already installed."
+    fi
+}
+
+set_env_var() {
+    if ! grep -q "export $1=" ~/.zshrc; then
+        echo "export $1=$2" >> ~/.zshrc
+        print_color "GREEN" "Added $1 environment variable to ~/.zshrc"
+    else
+        sed -i '' "s|export $1=.*|export $1=$2|" ~/.zshrc
+        print_color "YELLOW" "Updated $1 environment variable in ~/.zshrc"
+    fi
+
+    # Add to PATH if not already present
+    if ! echo $PATH | grep -q "$2/bin"; then
+        echo "export PATH=$2/bin:\$PATH" >> ~/.zshrc
+        print_color "GREEN" "Added $2/bin to PATH in ~/.zshrc"
+    fi
+}
+
+refresh_zshrc() {
+    print_color "BLUE" "Refreshing .zshrc..."
+    source ~/.zshrc
+}
+
+install_dependencies() {
+    install_homebrew
+
+    # Install JDK
+    check_and_install "JDK" "java" "brew install openjdk@11" "java -version"
+    JAVA_HOME=$(brew --prefix openjdk@11)
+    set_env_var "JAVA_HOME" "$JAVA_HOME"
+
+    # Install Node.js
+    check_and_install "Node.js" "node" "brew install node@14" "node --version"
+    NODE_HOME=$(brew --prefix node@14)
+    set_env_var "NODE_HOME" "$NODE_HOME"
+
+    # Install Android SDK
+    check_and_install "Android SDK" "sdkmanager" "brew install --cask android-commandlinetools" "sdkmanager --version"
+    ANDROID_HOME=$HOME/Library/Android/sdk
+    set_env_var "ANDROID_HOME" "$ANDROID_HOME"
+    set_env_var "ANDROID_SDK_ROOT" "$ANDROID_HOME"
+
+    # Install platform tools
+    $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+
+    # Install Appium
+    check_and_install "Appium" "appium" "npm install -g appium" "appium --version"
+}
+
+display_dependency_status() {
+    print_color "BLUE" "Dependency Status:"
+    echo "JDK: $JAVA_HOME"
+    java -version 2>&1 | head -n 1
+    echo "Node.js: $NODE_HOME"
+    node --version
+    echo "Android SDK: $ANDROID_HOME"
+    $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --version 2>&1 | head -n 1
+    echo "Appium: $(which appium)"
+    appium --version
+}
+
+main() {
+    print_color "GREEN" "Starting V10 macOS Development Environment Installation"
+
+    install_dependencies
+    refresh_zshrc
+    display_dependency_status
+
+    print_color "GREEN" "Installation complete. Your environment is now set up."
+}
+
+main
