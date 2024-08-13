@@ -1,0 +1,222 @@
+# V7 Windows Development Environment Installer
+# This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium
+
+# Ensure script is run as Administrator
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Error "Please run this script as Administrator"
+    Exit
+}
+
+$ErrorActionPreference = "Stop"
+
+function Write-ColorOutput($ForegroundColor) {
+    $fc = $host.UI.RawUI.ForegroundColor
+    $host.UI.RawUI.ForegroundColor = $ForegroundColor
+    if ($args) {
+        Write-Output $args
+    } else {
+        $input | Write-Output
+    }
+    $host.UI.RawUI.ForegroundColor = $fc
+}
+
+function Refresh-Environment {
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:JAVA_HOME = [System.Environment]::GetEnvironmentVariable("JAVA_HOME", "User")
+    $env:ANDROID_HOME = [System.Environment]::GetEnvironmentVariable("ANDROID_HOME", "User")
+    $env:ANDROID_SDK_ROOT = [System.Environment]::GetEnvironmentVariable("ANDROID_SDK_ROOT", "User")
+    $env:NODE_HOME = [System.Environment]::GetEnvironmentVariable("NODE_HOME", "User")
+}
+
+function Install-Chocolatey {
+    if (!(Get-Command choco -ErrorAction SilentlyContinue)) {
+        Write-ColorOutput Yellow "Installing Chocolatey..."
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+        Refresh-Environment
+        Write-ColorOutput Green "Chocolatey installed successfully."
+    } else {
+        Write-ColorOutput Yellow "Chocolatey is already installed."
+    }
+}
+
+function Find-JavaHome {
+    $javaHome = $null
+    $possiblePaths = @(
+        "C:\Program Files\Java\jdk-11*",
+        "C:\Program Files\OpenJDK\jdk-11*",
+        "C:\Program Files\AdoptOpenJDK\jdk-11*"
+    )
+
+    foreach ($path in $possiblePaths) {
+        $jdkPath = Get-ChildItem $path -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+        if ($jdkPath) {
+            $javaHome = $jdkPath
+            break
+        }
+    }
+
+    if (-not $javaHome) {
+        $javaExecutable = Get-Command java -ErrorAction SilentlyContinue
+        if ($javaExecutable) {
+            $javaHome = Split-Path (Split-Path $javaExecutable.Source -Parent) -Parent
+        }
+    }
+
+    return $javaHome
+}
+
+function Install-JDK {
+    $javaHome = Find-JavaHome
+    if ($javaHome) {
+        Write-ColorOutput Yellow "Java is already installed at $javaHome"
+    } else {
+        Write-ColorOutput Yellow "Installing OpenJDK 11..."
+        choco install openjdk11 -y --force
+        Refresh-Environment
+        $javaHome = Find-JavaHome
+    }
+
+    if ($javaHome) {
+        [System.Environment]::SetEnvironmentVariable("JAVA_HOME", $javaHome, [System.EnvironmentVariableTarget]::User)
+        $env:JAVA_HOME = $javaHome
+        Write-ColorOutput Green "JAVA_HOME set to $javaHome"
+    } else {
+        Write-ColorOutput Red "Failed to find Java installation. Please install Java manually and set JAVA_HOME."
+    }
+}
+
+function Install-NodeJS {
+    if (Get-Command node -ErrorAction SilentlyContinue) {
+        Write-ColorOutput Yellow "Node.js is already installed."
+    } else {
+        Write-ColorOutput Yellow "Installing Node.js..."
+        choco install nodejs-lts -y
+        Refresh-Environment
+    }
+    $nodeHome = (Get-Command node -ErrorAction SilentlyContinue).Path | Split-Path -Parent
+    if ($nodeHome) {
+        [System.Environment]::SetEnvironmentVariable("NODE_HOME", $nodeHome, [System.EnvironmentVariableTarget]::User)
+        $env:NODE_HOME = $nodeHome
+        Write-ColorOutput Green "NODE_HOME set to $nodeHome"
+        node --version
+    } else {
+        Write-ColorOutput Red "Failed to find Node.js installation. Please install Node.js manually."
+    }
+}
+
+function Install-AndroidSDK {
+    $androidHome = [System.Environment]::GetEnvironmentVariable("ANDROID_HOME", [System.EnvironmentVariableTarget]::User)
+    if (-not $androidHome) {
+        $androidHome = "$env:LOCALAPPDATA\Android\Sdk"
+    }
+    
+    # Install Command-line Tools
+    if (-not (Test-Path "$androidHome\cmdline-tools\latest\bin\sdkmanager.bat")) {
+        Write-ColorOutput Yellow "Installing Android SDK Command-line Tools..."
+        New-Item -ItemType Directory -Force -Path "$androidHome\cmdline-tools" | Out-Null
+        $cmdlineToolsUrl = "https://dl.google.com/android/repository/commandlinetools-win-9477386_latest.zip"
+        $cmdlineToolsZip = "commandlinetools.zip"
+        Invoke-WebRequest -Uri $cmdlineToolsUrl -OutFile $cmdlineToolsZip
+        Expand-Archive -Path $cmdlineToolsZip -DestinationPath "$androidHome\cmdline-tools" -Force
+        Remove-Item $cmdlineToolsZip
+        if (Test-Path "$androidHome\cmdline-tools\cmdline-tools") {
+            Move-Item "$androidHome\cmdline-tools\cmdline-tools" "$androidHome\cmdline-tools\latest" -Force
+        }
+    }
+
+    [System.Environment]::SetEnvironmentVariable("ANDROID_HOME", $androidHome, [System.EnvironmentVariableTarget]::User)
+    [System.Environment]::SetEnvironmentVariable("ANDROID_SDK_ROOT", $androidHome, [System.EnvironmentVariableTarget]::User)
+    $env:ANDROID_HOME = $androidHome
+    $env:ANDROID_SDK_ROOT = $androidHome
+    $newPath = "$androidHome\cmdline-tools\latest\bin;$androidHome\platform-tools;$androidHome\emulator;" + [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+    [System.Environment]::SetEnvironmentVariable("Path", $newPath, [System.EnvironmentVariableTarget]::User)
+    Refresh-Environment
+
+    # Install SDK packages and platform-tools (which includes ADB)
+    Write-ColorOutput Yellow "Installing Android SDK packages and platform-tools..."
+    $sdkmanager = "$androidHome\cmdline-tools\latest\bin\sdkmanager.bat"
+    if (Test-Path $sdkmanager) {
+        & $sdkmanager --verbose "platform-tools" "platforms;android-30" "build-tools;30.0.3" "emulator"
+    } else {
+        Write-ColorOutput Red "sdkmanager not found at $sdkmanager"
+    }
+    
+    # Verify ADB installation
+    if (Test-Path "$androidHome\platform-tools\adb.exe") {
+        Write-ColorOutput Green "Android SDK and ADB installed successfully."
+    } else {
+        Write-ColorOutput Red "ADB installation may have failed. Attempting manual installation..."
+        $platformToolsUrl = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+        $platformToolsZip = "platform-tools.zip"
+        Invoke-WebRequest -Uri $platformToolsUrl -OutFile $platformToolsZip
+        Expand-Archive -Path $platformToolsZip -DestinationPath $androidHome -Force
+        Remove-Item $platformToolsZip
+        
+        if (Test-Path "$androidHome\platform-tools\adb.exe") {
+            Write-ColorOutput Green "ADB installed successfully through manual installation."
+        } else {
+            Write-ColorOutput Red "ADB installation failed. Please install ADB manually."
+        }
+    }
+}
+
+function Install-Appium {
+    if (Get-Command appium -ErrorAction SilentlyContinue) {
+        Write-ColorOutput Yellow "Appium is already installed."
+    } else {
+        Write-ColorOutput Yellow "Installing Appium..."
+        npm install -g appium
+    }
+    Refresh-Environment
+    appium --version
+}
+
+function Display-DependencyStatus {
+    Refresh-Environment
+    Write-ColorOutput Blue "Dependency Status:"
+    
+    Write-ColorOutput Yellow "JDK:"
+    Write-ColorOutput Cyan $env:JAVA_HOME
+    java -version
+    
+    Write-ColorOutput Yellow "Node.js:"
+    Write-ColorOutput Cyan $env:NODE_HOME
+    node --version
+    
+    Write-ColorOutput Yellow "Android SDK:"
+    Write-ColorOutput Cyan $env:ANDROID_HOME
+    if (Test-Path "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat") {
+        & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" --version
+    } else {
+        Write-ColorOutput Red "Android SDK Command-line Tools not found. Please check the installation."
+    }
+    
+    Write-ColorOutput Yellow "ADB:"
+    if (Test-Path "$env:ANDROID_HOME\platform-tools\adb.exe") {
+        Write-ColorOutput Cyan "$env:ANDROID_HOME\platform-tools\adb.exe"
+        & "$env:ANDROID_HOME\platform-tools\adb.exe" version
+    } else {
+        Write-ColorOutput Red "ADB not found. Please check the installation."
+    }
+    
+    Write-ColorOutput Yellow "Appium:"
+    $appiumPath = (Get-Command appium -ErrorAction SilentlyContinue).Path
+    if ($appiumPath) {
+        Write-ColorOutput Cyan $appiumPath
+        appium --version
+    } else {
+        Write-ColorOutput Red "Appium not found. Please check the installation."
+    }
+}
+
+Write-ColorOutput Green "Starting V7 Windows Development Environment Installation"
+Install-Chocolatey
+Install-JDK
+Install-NodeJS
+Install-AndroidSDK
+Install-Appium
+Display-DependencyStatus
+Write-ColorOutput Green "Installation complete. Your environment is now set up."
+Write-ColorOutput Magenta "Please restart your PowerShell or Command Prompt to apply all changes."
