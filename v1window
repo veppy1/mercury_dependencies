@@ -1,0 +1,186 @@
+# Windows Development Environment Installer
+# This script installs JDK, Node.js, Android SDK Command-line Tools, and Appium
+
+# Function to print colored output
+function Write-Color([string]$Color = "White", [string]$Message) {
+    Write-Host $Message -ForegroundColor $Color
+}
+
+# Function to check if a command exists
+function Test-Command($Command) {
+    try {
+        if (Get-Command $Command -ErrorAction Stop) {
+            return $true
+        }
+    }
+    catch {
+        return $false
+    }
+}
+
+# Function to download file if not exists
+function Download-File($Url, $OutputFile) {
+    if (!(Test-Path $OutputFile) -or (Get-Item $OutputFile).length -eq 0) {
+        Write-Color "Yellow" "Downloading $Url..."
+        Invoke-WebRequest -Uri $Url -OutFile $OutputFile
+    } else {
+        Write-Color "Green" "$OutputFile already exists and is not empty. Skipping download."
+    }
+}
+
+# Function to add to PATH
+function Add-ToPath($Path) {
+    $envPath = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
+    if ($envPath -notlike "*$Path*") {
+        [System.Environment]::SetEnvironmentVariable("Path", "$envPath;$Path", [System.EnvironmentVariableTarget]::User)
+        Write-Color "Green" "Added $Path to PATH in User environment variables"
+    } else {
+        Write-Color "Yellow" "$Path is already in PATH"
+    }
+}
+
+# Function to set environment variable
+function Set-EnvVar($Name, $Value) {
+    $currentValue = [System.Environment]::GetEnvironmentVariable($Name, [System.EnvironmentVariableTarget]::User)
+    if ($currentValue -ne $Value) {
+        [System.Environment]::SetEnvironmentVariable($Name, $Value, [System.EnvironmentVariableTarget]::User)
+        Write-Color "Green" "Set $Name environment variable to $Value"
+    } else {
+        Write-Color "Yellow" "$Name environment variable is already set to $Value"
+    }
+}
+
+# Install JDK
+function Install-JDK {
+    if (Test-Command "java") {
+        $version = & java -version 2>&1
+        Write-Color "Yellow" "Java is already installed: $version"
+        return
+    }
+
+    $JDK_VERSION = "11.0.2"
+    $JDK_URL = "https://download.java.net/java/GA/jdk11/$JDK_VERSION/9/GPL/openjdk-${JDK_VERSION}_windows-x64_bin.zip"
+    $JDK_ZIP = "openjdk-${JDK_VERSION}_windows-x64_bin.zip"
+
+    Download-File $JDK_URL $JDK_ZIP
+
+    Write-Color "Yellow" "Extracting JDK..."
+    Expand-Archive -Path $JDK_ZIP -DestinationPath "C:\Program Files\Java" -Force
+    Remove-Item $JDK_ZIP
+
+    $JAVA_HOME = "C:\Program Files\Java\jdk-$JDK_VERSION"
+    Add-ToPath "$JAVA_HOME\bin"
+    Set-EnvVar "JAVA_HOME" $JAVA_HOME
+
+    Write-Color "Green" "JDK 11 installed successfully"
+    & java -version
+}
+
+# Install Node.js
+function Install-NodeJS {
+    if (Test-Command "node") {
+        $version = & node --version
+        Write-Color "Yellow" "Node.js is already installed: $version"
+        return
+    }
+
+    $NODE_VERSION = "14.17.0"
+    $NODE_URL = "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-win-x64.zip"
+    $NODE_ZIP = "node-v$NODE_VERSION-win-x64.zip"
+
+    Download-File $NODE_URL $NODE_ZIP
+
+    Write-Color "Yellow" "Extracting Node.js..."
+    Expand-Archive -Path $NODE_ZIP -DestinationPath "C:\Program Files" -Force
+    Remove-Item $NODE_ZIP
+
+    $NODE_PATH = "C:\Program Files\node-v$NODE_VERSION-win-x64"
+    Add-ToPath $NODE_PATH
+    Set-EnvVar "NODE_HOME" $NODE_PATH
+
+    Write-Color "Green" "Node.js installed successfully"
+    & node --version
+}
+
+# Install Android SDK Command-line Tools
+function Install-AndroidSDK {
+    if (Test-Path "$env:USERPROFILE\AppData\Local\Android\Sdk") {
+        Write-Color "Yellow" "Android SDK is already installed."
+        return
+    }
+
+    $SDK_VERSION = "8512546"
+    $SDK_URL = "https://dl.google.com/android/repository/commandlinetools-win-${SDK_VERSION}_latest.zip"
+    $SDK_ZIP = "commandlinetools-win-${SDK_VERSION}_latest.zip"
+
+    Download-File $SDK_URL $SDK_ZIP
+
+    Write-Color "Yellow" "Extracting Android SDK Command-line Tools..."
+    $ANDROID_HOME = "$env:USERPROFILE\AppData\Local\Android\Sdk"
+    New-Item -ItemType Directory -Force -Path "$ANDROID_HOME\cmdline-tools" | Out-Null
+    Expand-Archive -Path $SDK_ZIP -DestinationPath "$ANDROID_HOME\cmdline-tools" -Force
+    Move-Item "$ANDROID_HOME\cmdline-tools\cmdline-tools" "$ANDROID_HOME\cmdline-tools\latest" -Force
+    Remove-Item $SDK_ZIP
+
+    Set-EnvVar "ANDROID_HOME" $ANDROID_HOME
+    Set-EnvVar "ANDROID_SDK_ROOT" $ANDROID_HOME
+    Add-ToPath "$ANDROID_HOME\cmdline-tools\latest\bin"
+    Add-ToPath "$ANDROID_HOME\platform-tools"
+
+    Write-Color "Yellow" "Installing Android SDK packages..."
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    echo "y" | & sdkmanager --licenses
+    & sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+
+    Write-Color "Green" "Android SDK Command-line Tools installed successfully"
+}
+
+# Install Appium
+function Install-Appium {
+    if (Test-Command "appium") {
+        $version = & appium --version
+        Write-Color "Yellow" "Appium is already installed: $version"
+        return
+    }
+
+    if (!(Test-Command "npm")) {
+        Write-Color "Red" "npm is not installed. Please install Node.js first."
+        return
+    }
+
+    Write-Color "Yellow" "Installing Appium..."
+    & npm install -g appium
+
+    $APPIUM_PATH = (Get-Command appium).Source
+    Add-ToPath (Split-Path $APPIUM_PATH)
+
+    Write-Color "Green" "Appium installed successfully"
+    & appium --version
+}
+
+# Main installation process
+function Main {
+    Write-Color "Green" "Starting Windows Development Environment Installation"
+
+    Install-JDK
+    Install-NodeJS
+    Install-AndroidSDK
+    Install-Appium
+
+    Write-Color "Green" "Installation complete. Please restart your terminal to apply all changes."
+    Write-Color "Yellow" "Installation paths:"
+    Write-Host "JDK: $env:JAVA_HOME"
+    Write-Host "Node.js: $env:NODE_HOME"
+    Write-Host "Android SDK: $env:ANDROID_HOME"
+    Write-Host "Appium: $(Get-Command appium).Source"
+
+    Write-Color "Blue" "To verify the installation, you can run the following commands:"
+    Write-Host "java -version"
+    Write-Host "node -v"
+    Write-Host "npm -v"
+    Write-Host "adb version"
+    Write-Host "appium -v"
+}
+
+# Run the main function
+Main
