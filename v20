@@ -97,19 +97,95 @@ install_nodejs() {
 }
 
 install_android_sdk() {
-    # ... (same as before)
+    ANDROID_HOME=$HOME/Library/Android/sdk
+    CMDLINE_TOOLS=$ANDROID_HOME/cmdline-tools
+    LATEST_TOOLS=$CMDLINE_TOOLS/latest
+
+    if [ ! -d "$ANDROID_HOME" ] || [ ! -f "$LATEST_TOOLS/bin/sdkmanager" ]; then
+        print_color "YELLOW" "Installing Android SDK..."
+        mkdir -p $CMDLINE_TOOLS
+        TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-mac-9477386_latest.zip"
+        TOOLS_ZIP="commandlinetools.zip"
+        curl -o $TOOLS_ZIP $TOOLS_URL
+        unzip -q $TOOLS_ZIP -d $CMDLINE_TOOLS
+        rm $TOOLS_ZIP
+        mv $CMDLINE_TOOLS/cmdline-tools $LATEST_TOOLS
+        chmod -R +x $LATEST_TOOLS/bin
+        yes | $LATEST_TOOLS/bin/sdkmanager --licenses > /dev/null 2>&1
+        $LATEST_TOOLS/bin/sdkmanager "platform-tools" "platforms;android-30" "build-tools;30.0.3" "emulator"
+        print_color "GREEN" "Android SDK installed successfully."
+    else
+        print_color "YELLOW" "Android SDK is already installed."
+    fi
+
+    set_env_var "ANDROID_HOME" "$ANDROID_HOME"
+    set_env_var "ANDROID_SDK_ROOT" "$ANDROID_HOME"
+    echo "export PATH=\$ANDROID_HOME/cmdline-tools/latest/bin:\$ANDROID_HOME/platform-tools:\$ANDROID_HOME/emulator:\$PATH" >> ~/.zshrc
+
+    if [ ! -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "YELLOW" "ADB not found. Downloading and installing manually..."
+        local ADB_ZIP="platform-tools-latest-darwin.zip"
+        curl -O https://dl.google.com/android/repository/$ADB_ZIP
+        unzip -q $ADB_ZIP -d $ANDROID_HOME
+        rm $ADB_ZIP
+    fi
+
+    if [ -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "GREEN" "ADB installed successfully."
+        $ANDROID_HOME/platform-tools/adb version
+    else
+        print_color "RED" "ADB installation failed. Please check manually."
+    fi
 }
 
 install_appium() {
-    # ... (same as before)
+    if command -v appium &> /dev/null; then
+        print_color "YELLOW" "Appium is already installed."
+    else
+        print_color "YELLOW" "Installing Appium..."
+        npm install -g appium
+    fi
+    appium --version
 }
 
 install_dependencies() {
-    # ... (same as before)
+    install_homebrew
+    install_jdk
+    install_nodejs
+    install_android_sdk
+    install_appium
 }
 
 display_dependency_status() {
-    # ... (same as before)
+    print_color "BLUE" "Dependency Status:"
+    
+    print_color "YELLOW" "JDK:"
+    print_color "CYAN" "$JAVA_HOME"
+    java -version 2>&1 | head -n 1
+    
+    print_color "YELLOW" "Node.js:"
+    print_color "CYAN" "$NODE_HOME"
+    node --version
+    
+    print_color "YELLOW" "Android SDK:"
+    print_color "CYAN" "$ANDROID_HOME"
+    if [ -f "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --version 2>&1 | head -n 1
+    else
+        print_color "RED" "Android SDK installation seems incomplete. Please check manually."
+    fi
+    
+    print_color "YELLOW" "ADB:"
+    if [ -f "$ANDROID_HOME/platform-tools/adb" ]; then
+        print_color "CYAN" "$ANDROID_HOME/platform-tools/adb"
+        $ANDROID_HOME/platform-tools/adb version | head -n 1
+    else
+        print_color "RED" "ADB not found. Please check the installation."
+    fi
+    
+    print_color "YELLOW" "Appium:"
+    print_color "CYAN" "$(which appium)"
+    appium --version
 }
 
 main() {
